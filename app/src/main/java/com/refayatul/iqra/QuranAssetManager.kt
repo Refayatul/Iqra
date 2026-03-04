@@ -25,13 +25,16 @@ class QuranAssetManager(private val context: Context) {
 
     private var englishMap: Map<String, String> = emptyMap()
     private var banglaMap: Map<String, String> = emptyMap()
+    private var quranCache: List<Ayah>? = null
 
     /**
      * Loads vocab.json and returns a map of token ID to character.
      */
     suspend fun loadVocab(): Map<Int, String> = withContext(Dispatchers.IO) {
-        val jsonString = context.assets.open("data/vocab.json").bufferedReader().use { it.readText() }
-        val jsonObject = json.decodeFromString<JsonObject>(jsonString)
+        var jsonString: String? = context.assets.open("data/vocab.json").bufferedReader().use { it.readText() }
+        val jsonObject = json.decodeFromString<JsonObject>(jsonString!!)
+        jsonString = null // Help GC
+        
         jsonObject.mapNotNull { (key, value) ->
             val id = key.toIntOrNull()
             val char = value.jsonPrimitive.contentOrNull
@@ -44,11 +47,14 @@ class QuranAssetManager(private val context: Context) {
      */
     suspend fun loadTranslations() = withContext(Dispatchers.IO) {
         try {
-            val enString = context.assets.open("data/quran_en.json").bufferedReader().use { it.readText() }
-            val bnString = context.assets.open("data/quran_bn.json").bufferedReader().use { it.readText() }
+            var enString: String? = context.assets.open("data/quran_en.json").bufferedReader().use { it.readText() }
+            var bnString: String? = context.assets.open("data/quran_bn.json").bufferedReader().use { it.readText() }
 
-            val enSurahs = json.decodeFromString<List<TranslationSurah>>(enString)
-            val bnSurahs = json.decodeFromString<List<TranslationSurah>>(bnString)
+            val enSurahs = json.decodeFromString<List<TranslationSurah>>(enString!!)
+            enString = null // Help GC
+            
+            val bnSurahs = json.decodeFromString<List<TranslationSurah>>(bnString!!)
+            bnString = null // Help GC
 
             englishMap = enSurahs.flatMap { surah ->
                 surah.verses.map { ayah -> "${surah.id}:${ayah.id}" to ayah.translation }
@@ -68,20 +74,48 @@ class QuranAssetManager(private val context: Context) {
      * Loads quran.json as a list of Ayah objects and attaches translations.
      */
     suspend fun loadQuran(): List<Ayah> = withContext(Dispatchers.IO) {
+        quranCache?.let { return@withContext it }
+
         if (englishMap.isEmpty() || banglaMap.isEmpty()) {
             loadTranslations()
         }
         
-        val jsonString = context.assets.open("data/quran.json").bufferedReader().use { it.readText() }
-        val ayahs = json.decodeFromString<List<Ayah>>(jsonString)
+        var jsonString: String? = context.assets.open("data/quran.json").bufferedReader().use { it.readText() }
+        val ayahs = json.decodeFromString<List<Ayah>>(jsonString!!)
+        jsonString = null // Help GC
         
-        ayahs.map { ayah ->
+        val loadedAyahs = ayahs.map { ayah ->
             val key = "${ayah.surah}:${ayah.ayah}"
             ayah.copy(
                 translationEn = englishMap[key] ?: "Translation not found",
                 translationBn = banglaMap[key] ?: "অনুবাদ পাওয়া যায়নি"
             )
         }
+        quranCache = loadedAyahs
+        loadedAyahs
+    }
+
+    /**
+     * Searches for ayahs matching the query in English or Bangla.
+     */
+    suspend fun searchQuran(query: String): List<Ayah> = withContext(Dispatchers.Default) {
+        if (query.length < 3) return@withContext emptyList<Ayah>()
+        
+        val allAyahs = loadQuran()
+        val lowerQuery = query.lowercase()
+        
+        allAyahs.filter { ayah ->
+            ayah.translationEn.lowercase().contains(lowerQuery) ||
+            ayah.translationBn.contains(query) // Bangla doesn't have lowercase/uppercase
+        }.take(50)
+    }
+
+    /**
+     * Returns all ayahs for a specific surah.
+     */
+    suspend fun getFullSurah(surahId: Int): List<Ayah> = withContext(Dispatchers.IO) {
+        val allAyahs = loadQuran()
+        allAyahs.filter { it.surah == surahId }
     }
 
     /**

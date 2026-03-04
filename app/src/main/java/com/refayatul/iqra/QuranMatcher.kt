@@ -51,22 +51,27 @@ object QuranMatcher {
         transcript: String,
         quran: List<Ayah>,
         threshold: Double = 0.3,
-        maxSpan: Int = 3
+        currentSurah: Int? = null,
+        currentAyah: Int? = null
     ): MatchResult? {
         val normalizedTranscript = ArabicNormalizer.normalize(transcript)
         if (normalizedTranscript.isBlank()) return null
 
-        // Pass 1: Score single verses
         var bestScore = -1.0
         var bestAyah: Ayah? = null
-        var bestAyahEnd: Int? = null
 
-        // Pre-cache normalized versions of verses (in production, do this once)
         for (v in quran) {
             val vClean = ArabicNormalizer.normalize(v.text_clean)
             var score = ratio(normalizedTranscript, vClean)
 
-            // Try without Bismillah for verse 1s (except Fatiha and Tawbah)
+            // Sequence Bias: Bonus for the next verse
+            if (currentSurah != null && currentAyah != null) {
+                if (v.surah == currentSurah && v.ayah == currentAyah + 1) {
+                    score += 0.1 // 10% bonus for the immediate next verse
+                }
+            }
+
+            // Try without Bismillah for verse 1s
             if (v.ayah == 1 && v.surah != 1 && v.surah != 9) {
                 if (vClean.startsWith(BSM_CLEAN)) {
                     val stripped = vClean.removePrefix(BSM_CLEAN).trim()
@@ -79,7 +84,6 @@ object QuranMatcher {
             if (score > bestScore) {
                 bestScore = score
                 bestAyah = v
-                bestAyahEnd = null
             }
         }
 
@@ -87,7 +91,7 @@ object QuranMatcher {
             MatchResult(
                 surah = bestAyah.surah,
                 ayah = bestAyah.ayah,
-                ayahEnd = bestAyahEnd,
+                ayahEnd = null,
                 surahName = bestAyah.surah_name,
                 surahNameEn = bestAyah.surah_name_en,
                 textUthmani = bestAyah.text_uthmani,

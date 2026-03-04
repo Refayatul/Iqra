@@ -1,60 +1,35 @@
-# Iqra (اقرأ) - Offline Quran Verse Recognition
+# Iqra (اقرأ) - Premium Offline Quran Recognition & Learning
 
-**Iqra** is a native Android application that performs high-accuracy, completely offline Quranic voice recognition. By combining modern Android development practices with on-device AI, Iqra identifies Surahs and Ayahs as you recite them—no internet connection required.
+**Iqra** is a state-of-the-art native Android application designed for high-accuracy, 100% offline Quranic voice recognition. It combines on-device AI with a premium manuscript-inspired design to create a powerful tool for recitation improvement, memorization, and discovery.
 
-This project is a native Android port of the [Offline Tarteel](https://github.com/yazinsai/offline-tarteel) repository.
+## 🚀 Key Features
 
-## 🚀 Features
+- **100% Offline AI**: All inference happens on-device using a quantized NVIDIA FastConformer model. No internet is required for recognition.
+- **Continuous Recitation (Auto-Mode)**: Hands-free experience with a 7-second sliding window buffer that identifies verses in real-time as you recite.
+- **Correction Mode**: Visual feedback on your recitation. Correct words are highlighted in theme colors, while missed or incorrect words are marked in red with underlines.
+- **Identify & Play**: Listen to professional recitation by Mishary Rashid Alafasy for any identified verse to verify your Tajweed (requires internet).
+- **Smart Topic Search**: Quickly find verses by keywords in English or Bangla. Search results are debounced and filtered on background threads for zero lag.
+- **Premium Quranic Typography**: Features the professional **KFGQPC Uthman Taha** font with optimized 1.6em line spacing for clear diacritics.
+- **Share as Image**: Generate and share high-resolution verse cards with Arabic text, translations, and "Iqra" branding.
+- **Dual Premium Themes**:
+    - **Deep Forest (Dark)**: Gold-on-charcoal luxury aesthetic.
+    - **Classic Manuscript (Light)**: Traditional ink-on-cream feel.
 
-- **100% Offline**: All AI inference and database matching happen on-device. Your voice never leaves your phone.
-- **Fast Recognition**: Powered by a quantized NVIDIA FastConformer model (~0.3s - 1.0s latency).
-- **Fuzzy Matching**: Uses Levenshtein distance algorithms to handle minor recitation mistakes or background noise.
-- **Modern UI**: Built with Jetpack Compose and Material 3, featuring a clean, minimalist aesthetic and pulsing recording animations.
-- **Uthmani Script**: Displays results in beautiful, readable Arabic script with RTL support.
+## 🏗 Architecture & Tech Stack
 
-## 🛠 Tech Stack
+- **UI**: Jetpack Compose (Material 3) with FlowRow for word-by-word alignment.
+- **AI Inference**: [ONNX Runtime Mobile](https://onnxruntime.ai/).
+- **Audio Engine**: Native `AudioRecord` at 16kHz mono with real-time RMS visualizer.
+- **Media**: Media3 ExoPlayer for high-quality audio streaming.
+- **Matching Engine**: Enhanced Levenshtein fuzzy matching with sequence bias (+10% bonus for sequential verses).
+- **Memory Optimization**: Explicit GC-friendly JSON parsing and caching of processed datasets.
 
-- **UI**: Jetpack Compose (Material 3)
-- **Language**: Kotlin
-- **Architecture**: MVVM (ViewModel, StateFlow)
-- **AI Inference**: [ONNX Runtime Mobile](https://onnxruntime.ai/)
-- **Audio Processing**: Native `AudioRecord` (16kHz, Mono, PCM-16 to Float32)
-- **Concurrency**: Kotlin Coroutines (Inference and math operations off-loaded to `Dispatchers.Default`)
-- **Data Parsing**: `kotlinx.serialization` for vocabulary and Quranic datasets.
+## 📦 Asset Requirements
 
-## 🏗 Architecture
+Ensure these files are in `app/src/main/assets/data/`:
+- `vocab.json`: CTC vocabulary mapping.
+- `quran.json`: Flat Arabic dataset.
+- `quran_en.json` & `quran_bn.json`: Nested translations.
+- `fastconformer_ar_ctc_q8.onnx`: Root of `assets/`.
+- `quran_font.ttf`: Professional font in `app/src/main/res/font/`.
 
-The app follows a robust 4-step pipeline:
-
-1.  **Audio Capture**: Native recording at 16kHz mono.
-2.  **Mel Spectrogram**: Custom Kotlin implementation of NeMo-compatible 80-bin Mel features (Dithering, Pre-emphasis, Slaney normalization).
-3.  **ONNX Inference**: Runs the quantized FastConformer model to produce CTC logprobs.
-4.  **Decode & Match**: CTC Greedy decoding generates a transcript, which is then fuzzy-matched against all 6,236 verses using normalized Arabic text.
-
-## 📦 Installation & Setup
-
-### Prerequisites
-- Android Studio Ladybug or newer.
-- A physical Android device (API 24+). *Note: Emulators are not recommended for microphone-based AI testing.*
-
-### Asset Setup
-Before building, ensure the following files are in `app/src/main/assets/data/`:
-- `vocab.json`: The CTC vocabulary mapping.
-- `quran.json`: The dataset of all 6,236 verses.
-- `fastconformer_ar_ctc_q8.onnx`: The quantized model file (Place in `assets/` root).
-
-### Building
-1. Clone the repository.
-2. Open in Android Studio.
-3. Sync Gradle.
-4. Click **Run**.
-
-## 🤝 Acknowledgments
-
-- **NVIDIA**: For the FastConformer ASR architecture.
-- **Tarteel.ai**: For inspiring the mission of offline Quranic tools.
-- **Yazin (yazinsai)**: For the [Offline Tarteel](https://github.com/yazinsai/offline-tarteel) logic and model quantization that made this port possible.
-
-## 📜 License
-
-This project is licensed under the MIT License. The underlying NVIDIA model is licensed under CC-BY-4.0.

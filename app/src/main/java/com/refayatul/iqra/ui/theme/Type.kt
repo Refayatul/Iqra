@@ -2,12 +2,19 @@ package com.refayatul.iqra.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.refayatul.iqra.R
 
-// Note: To use a specialized Quranic font, place the .ttf file in res/font 
-// and define it here using FontFamily(Font(R.font.uthmani))
+// Define the Quranic Font Family
+// Note: You must place your .ttf file in app/src/main/res/font/
+// and name it 'quran_font.ttf' (all lowercase, no spaces).
+val QuranFont = FontFamily(
+    Font(R.font.quran_font, FontWeight.Normal)
+)
+
 val Typography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
