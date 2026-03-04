@@ -21,6 +21,8 @@ data class IqraUiState(
     val matchedSurahNameEn: String? = null,
     val matchedAyahNumber: Int? = null,
     val arabicText: String? = null,
+    val translationEn: String? = null,
+    val translationBn: String? = null,
     val transcript: String? = null,
     val errorMessage: String? = null
 )
@@ -186,6 +188,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             matchedSurahNameEn = match.surahNameEn,
                             matchedAyahNumber = match.ayah,
                             arabicText = match.textUthmani,
+                            translationEn = match.translationEn,
+                            translationBn = match.translationBn,
                             transcript = resultTranscript
                         )
                     } else {

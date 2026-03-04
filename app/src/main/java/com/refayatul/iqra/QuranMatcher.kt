@@ -60,7 +60,6 @@ object QuranMatcher {
         var bestScore = -1.0
         var bestAyah: Ayah? = null
         var bestAyahEnd: Int? = null
-        var bestTextClean = ""
 
         // Pre-cache normalized versions of verses (in production, do this once)
         for (v in quran) {
@@ -81,14 +80,9 @@ object QuranMatcher {
                 bestScore = score
                 bestAyah = v
                 bestAyahEnd = null
-                bestTextClean = vClean
             }
         }
 
-        // Pass 2: Multi-ayah spans (simplified for Phase 4)
-        // Note: Real implementation would check spans around top candidates
-        // For now, we return the best single match if it meets threshold
-        
         return if (bestScore >= threshold && bestAyah != null) {
             MatchResult(
                 surah = bestAyah.surah,
@@ -97,6 +91,8 @@ object QuranMatcher {
                 surahName = bestAyah.surah_name,
                 surahNameEn = bestAyah.surah_name_en,
                 textUthmani = bestAyah.text_uthmani,
+                translationEn = bestAyah.translationEn,
+                translationBn = bestAyah.translationBn,
                 score = bestScore
             )
         } else null
@@ -109,6 +105,8 @@ object QuranMatcher {
         val surahName: String,
         val surahNameEn: String,
         val textUthmani: String,
+        val translationEn: String,
+        val translationBn: String,
         val score: Double
     )
 }
