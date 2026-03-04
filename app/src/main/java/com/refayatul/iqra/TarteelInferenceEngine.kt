@@ -3,6 +3,8 @@ package com.refayatul.iqra
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.TensorInfo
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.FloatBuffer
@@ -10,6 +12,7 @@ import java.nio.LongBuffer
 
 class TarteelInferenceEngine(private val modelPath: String) {
 
+    private val TAG = "InferenceEngine"
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var session: OrtSession? = null
 
@@ -19,10 +22,15 @@ class TarteelInferenceEngine(private val modelPath: String) {
     suspend fun initialize() = withContext(Dispatchers.IO) {
         if (session == null) {
             val options = OrtSession.SessionOptions()
-            // Optimization: Use 1 thread for mobile to avoid overhead
             options.setInterOpNumThreads(1)
             options.setIntraOpNumThreads(1)
             session = env.createSession(modelPath, options)
+            
+            session?.let { s ->
+                Log.i(TAG, "IQRA_LOG: ONNX Session initialized.")
+                Log.i(TAG, "IQRA_LOG: Inputs: ${s.inputNames}")
+                Log.i(TAG, "IQRA_LOG: Outputs: ${s.outputNames}")
+            }
         }
     }
 
@@ -37,37 +45,49 @@ class TarteelInferenceEngine(private val modelPath: String) {
         val currentSession = session ?: throw IllegalStateException("Session not initialized")
         val blankId = vocab.keys.maxOrNull() ?: throw IllegalStateException("Vocab is empty")
 
-        // Input 1: [1, 80, timeFrames]
         val featureBuffer = FloatBuffer.wrap(features)
         val featureShape = longArrayOf(1, 80, timeFrames.toLong())
         
-        // Input 2: [1] (timeFrames)
         val lengthBuffer = LongBuffer.wrap(longArrayOf(timeFrames.toLong()))
         val lengthShape = longArrayOf(1)
 
-        // Create tensors. Env is a singleton, we don't close it here.
         val featureTensor = OnnxTensor.createTensor(env, featureBuffer, featureShape)
         val lengthTensor = OnnxTensor.createTensor(env, lengthBuffer, lengthShape)
 
         try {
+            // Robustly identify input names based on tensor rank (3 for audio, 1 for length)
+            val inputInfo = currentSession.inputInfo
+            val audioInputName = inputInfo.entries.find { 
+                val info = it.value.info
+                info is TensorInfo && info.shape.size == 3 
+            }?.key ?: currentSession.inputNames.first()
+
+            val lengthInputName = inputInfo.entries.find { 
+                val info = it.value.info
+                info is TensorInfo && info.shape.size == 1 
+            }?.key ?: currentSession.inputNames.toList().getOrNull(1) ?: "length"
+
             val inputs = mapOf(
-                currentSession.inputNames.iterator().next() to featureTensor,
-                currentSession.inputNames.toList()[1] to lengthTensor
+                audioInputName to featureTensor,
+                lengthInputName to lengthTensor
             )
 
-            // Run Session
+            Log.i(TAG, "IQRA_LOG: session.run() with mapped inputs: $inputs")
             currentSession.run(inputs).use { results ->
                 val outputTensor = results[0] as OnnxTensor
                 
-                // Output shape is [1, T, VocabSize]
                 val logprobs = outputTensor.floatBuffer
                 val outputShape = outputTensor.info.shape
                 val tSteps = outputShape[1].toInt()
                 val vSize = outputShape[2].toInt()
 
-                // CTC Greedy Decode
-                decode(logprobs, tSteps, vSize, vocab, blankId)
+                val transcript = decode(logprobs, tSteps, vSize, vocab, blankId)
+                Log.i(TAG, "IQRA_LOG: Decoded Transcript: $transcript")
+                transcript
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "IQRA_LOG: ONNX session.run() failed", e)
+            ""
         } finally {
             featureTensor.close()
             lengthTensor.close()
@@ -85,26 +105,23 @@ class TarteelInferenceEngine(private val modelPath: String) {
         var prevId = -1
 
         for (t in 0 until tSteps) {
-            var maxProb = Float.NEGATIVE_INFINITY
+            var maxProb = -Float.MAX_VALUE
             var maxId = -1
 
-            // Argmax for current timestep
             for (v in 0 until vSize) {
                 val prob = logprobs.get(t * vSize + v)
-                if (prob > maxProb) {
+                if (prob.isFinite() && prob > maxProb) {
                     maxProb = prob
                     maxId = v
                 }
             }
 
-            // Collapse repeats and remove blanks
-            if (maxId != prevId && maxId != blankId) {
+            if (maxId != -1 && maxId != prevId && maxId != blankId) {
                 vocab[maxId]?.let { tokens.add(it) }
             }
             prevId = maxId
         }
 
-        // Join, replace NeMo's space token (\u2581), and trim
         return tokens.joinToString("")
             .replace("\u2581", " ")
             .trim()
@@ -112,8 +129,6 @@ class TarteelInferenceEngine(private val modelPath: String) {
 
     fun close() {
         session?.close()
-        // Env is a singleton, closing it usually happens at app exit, 
-        // but we can close it if we're sure we're done.
         env.close()
     }
 }

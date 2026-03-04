@@ -1,6 +1,7 @@
 package com.refayatul.iqra
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -9,9 +10,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class QuranAssetManager(private val context: Context) {
 
+    private val TAG = "QuranAssetManager"
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
@@ -39,17 +44,24 @@ class QuranAssetManager(private val context: Context) {
     }
 
     /**
-     * Copies the ONNX model from assets to the internal cache directory.
+     * Copies the ONNX model from assets to the internal files directory.
      * Returns the absolute path to the copied file.
      */
-    suspend fun copyModelToCache(): String = withContext(Dispatchers.IO) {
-        val modelFile = File(context.cacheDir, "fastconformer_ar_ctc_q8.onnx")
+    suspend fun provideModelPath(): String = withContext(Dispatchers.IO) {
+        val modelFile = File(context.filesDir, "fastconformer_ar_ctc_q8.onnx")
         if (!modelFile.exists()) {
+            val sdf = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+            Log.d(TAG, "Copying started at ${sdf.format(Date())}")
+            
             context.assets.open("fastconformer_ar_ctc_q8.onnx").use { input ->
                 FileOutputStream(modelFile).use { output ->
                     input.copyTo(output)
                 }
             }
+            
+            Log.d(TAG, "Copying finished at ${sdf.format(Date())}")
+        } else {
+            Log.d(TAG, "Model already exists at ${modelFile.absolutePath}")
         }
         modelFile.absolutePath
     }

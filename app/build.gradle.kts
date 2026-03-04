@@ -1,11 +1,13 @@
+import com.android.build.api.dsl.ApplicationExtension
+
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler) // Modern Compose compiler (Kotlin 2.0+)
 }
 
-android {
+// This replaces the old 'android' block to satisfy AGP 9.0/10.0 requirements
+extensions.configure<ApplicationExtension> {
     namespace = "com.refayatul.iqra"
     compileSdk = 36
 
@@ -36,18 +38,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
     buildFeatures {
-        compose = true // Enables Jetpack Compose UI
+        compose = true
     }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+// Top-level Kotlin configuration for JVM target
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
