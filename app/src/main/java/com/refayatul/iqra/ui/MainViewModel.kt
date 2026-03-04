@@ -20,10 +20,45 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.net.URL
 import kotlin.math.sqrt
 
 enum class WordState { CORRECT, MISSING, WRONG }
 data class WordCorrection(val word: String, val state: WordState)
+
+enum class TafsirSource(val id: String, val displayName: String, val path: String, val language: String) {
+    // Bengali
+    FATHUL_MAJID("381", "Tafsir Fathul Majid", "bn-tafisr-fathul-majid", "Bengali"),
+    IBN_KATHIR_BN("164", "Tafseer ibn Kathir", "bn-tafseer-ibn-e-kaseer", "Bengali"),
+    AHSANUL_BAYAAN("165", "Tafsir Ahsanul Bayaan", "bn-tafsir-ahsanul-bayaan", "Bengali"),
+    ABU_BAKR_ZAKARIA("166", "Tafsir Abu Bakr Zakaria", "bn-tafsir-abu-bakr-zakaria", "Bengali"),
+    
+    // English
+    IBN_KATHIR_EN("169", "Tafsir Ibn Kathir (abridged)", "en-tafisr-ibn-kathir", "English"),
+    TAZKIRUL_QURAN_EN("817", "Tazkirul Quran", "en-tazkirul-quran", "English"),
+    MAARIF_UL_QURAN_EN("168", "Maarif-ul-Quran", "en-tafsir-maarif-ul-quran", "English"),
+    AL_JALALAYN_EN("74", "Al-Jalalayn", "en-al-jalalayn", "English"),
+    IBN_ABBAS_EN("73", "Tanwîr al-Miqbâs", "en-tafsir-ibn-abbas", "English"),
+    ASBAB_AL_NUZUL_EN("86", "Asbab Al-Nuzul", "en-asbab-al-nuzul-by-al-wahidi", "English"),
+    TUSTARI_EN("93", "Tafsir al-Tustari", "en-tafsir-al-tustari", "English"),
+    KASHANI_EN("107", "Kashani Tafsir", "en-kashani-tafsir", "English"),
+    AL_QUSHAIRI_EN("108", "Al Qushairi Tafsir", "en-al-qushairi-tafsir", "English"),
+    KASHF_AL_ASRAR_EN("109", "Kashf Al-Asrar Tafsir", "en-kashf-al-asrar-tafsir", "English"),
+
+    // Arabic
+    SADDI_AR("91", "Tafseer Al Saddi", "ar-tafseer-al-saddi", "Arabic"),
+    IBN_KATHIR_AR("14", "Tafsir Ibn Kathir", "ar-tafsir-ibn-kathir", "Arabic"),
+    BAGHAWY_AR("94", "Tafseer Al-Baghawi", "ar-tafsir-al-baghawi", "Arabic"),
+    TANWEER_AR("92", "Tafseer Tanwir al-Miqbas", "ar-tafseer-tanwir-al-miqbas", "Arabic"),
+    WASEET_AR("93", "Tafsir Al Wasit", "ar-tafsir-al-wasit", "Arabic"),
+    TABARI_AR("15", "Tafsir al-Tabari", "ar-tafsir-al-tabari", "Arabic"),
+    MUYASSAR_AR("16", "Tafsir Muyassar", "ar-tafsir-muyassar", "Arabic"),
+    QURTUBI_AR("90", "Tafseer Al Qurtubi", "ar-tafseer-al-qurtubi", "Arabic")
+}
 
 data class IqraUiState(
     val isRecording: Boolean = false,
@@ -49,7 +84,10 @@ data class IqraUiState(
     val currentAmplitude: List<Float> = List(30) { 0f },
     val verseCorrection: List<WordCorrection> = emptyList(),
     val isPlaying: Boolean = false,
-    val isOnline: Boolean = true
+    val isOnline: Boolean = true,
+    val currentTafsir: String? = null,
+    val isTafsirLoading: Boolean = false,
+    val selectedTafsirSource: TafsirSource = TafsirSource.ABU_BAKR_ZAKARIA
 )
 
 data class SurahInfo(
@@ -79,8 +117,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     
     private var recordingJob: Job? = null
     private var continuousProcessingJob: Job? = null
+    private var searchJob: Job? = null
     
-    // Sliding Window: last 7 seconds of audio (16000 samples/sec * 7)
     private val SLIDING_WINDOW_SIZE = 16000 * 7
     private val audioBuffer = mutableListOf<FloatArray>()
 
@@ -130,32 +168,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(isOnline = isOnline) }
     }
 
+    fun fetchTafsir(surah: Int, ayah: Int) {
+        checkNetworkStatus()
+        if (!_uiState.value.isOnline) {
+            _uiState.update { it.copy(errorMessage = "Tafsir requires internet connection") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTafsirLoading = true, currentTafsir = null) }
+            try {
+                val source = _uiState.value.selectedTafsirSource
+                val url = "https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${source.path}/$surah/$ayah.json"
+                
+                val result = withContext(Dispatchers.IO) {
+                    val jsonString = URL(url).readText()
+                    val jsonObject = Json.decodeFromString<JsonObject>(jsonString)
+                    jsonObject["text"]?.jsonPrimitive?.content ?: "Tafsir content not found."
+                }
+                
+                _uiState.update { it.copy(isTafsirLoading = false, currentTafsir = result) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Tafsir fetch failed", e)
+                _uiState.update { it.copy(isTafsirLoading = false, errorMessage = "Failed to load Tafsir") }
+            }
+        }
+    }
+
+    fun selectTafsirSource(source: TafsirSource) {
+        _uiState.update { it.copy(selectedTafsirSource = source) }
+        val state = _uiState.value
+        if (state.matchedSurahId != null && state.matchedAyahNumber != null && state.currentTafsir != null) {
+            fetchTafsir(state.matchedSurahId, state.matchedAyahNumber)
+        }
+    }
+
     @OptIn(UnstableApi::class)
     fun playRecitation(surah: Int, ayah: Int) {
-        if (!_uiState.value.isOnline) return
-        
+        checkNetworkStatus()
+        if (!_uiState.value.isOnline) {
+            _uiState.update { it.copy(errorMessage = "Playback requires internet connection") }
+            return
+        }
         stopRecitation()
-        
         try {
             val surahStr = surah.toString().padStart(3, '0')
             val ayahStr = ayah.toString().padStart(3, '0')
             val url = "https://everyayah.com/data/Mishary_Rashid_Alafasy_64kbps/$surahStr$ayahStr.mp3"
             
-            exoPlayer = ExoPlayer.Builder(getApplication()).build().apply {
-                val mediaItem = MediaItem.fromUri(url)
-                setMediaItem(mediaItem)
-                prepare()
-                play()
-                addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _uiState.update { it.copy(isPlaying = isPlaying) }
-                    }
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_ENDED) {
-                            _uiState.update { it.copy(isPlaying = false) }
+            viewModelScope.launch(Dispatchers.Main) {
+                exoPlayer = ExoPlayer.Builder(getApplication()).build().apply {
+                    val mediaItem = MediaItem.fromUri(url)
+                    setMediaItem(mediaItem)
+                    prepare()
+                    play()
+                    addListener(object : Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            _uiState.update { it.copy(isPlaying = isPlaying) }
                         }
-                    }
-                })
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_ENDED) {
+                                stopRecitation()
+                            }
+                        }
+                    })
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "ExoPlayer error", e)
@@ -164,10 +241,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopRecitation() {
-        exoPlayer?.stop()
-        exoPlayer?.release()
-        exoPlayer = null
-        _uiState.update { it.copy(isPlaying = false) }
+        viewModelScope.launch(Dispatchers.Main) {
+            exoPlayer?.stop()
+            exoPlayer?.release()
+            exoPlayer = null
+            _uiState.update { it.copy(isPlaying = false) }
+        }
     }
 
     fun toggleDarkMode() {
@@ -180,11 +259,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onSearchQueryChanged(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        performSearch(query)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(300) // 300ms debounce
+            performSearch(query)
+        }
     }
 
     private fun performSearch(query: String) {
-        if (query.isBlank()) {
+        if (query.length < 3) {
             _uiState.update { it.copy(searchResults = emptyList()) }
             return
         }
@@ -199,7 +282,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateToSearch() {
-        _uiState.update { it.copy(currentScreen = AppScreen.Search) }
+        _uiState.update { it.copy(currentScreen = AppScreen.Search, searchQuery = "", searchResults = emptyList()) }
     }
 
     fun navigateToSurah(surahId: Int, ayahId: Int) {
@@ -235,7 +318,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isProcessing = false,
                 isRecording = false,
                 currentAmplitude = List(30) { 0f },
-                verseCorrection = emptyList()
+                verseCorrection = emptyList(),
+                currentTafsir = null
             )
         }
         audioBuffer.clear()
@@ -251,14 +335,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startRecording() {
         if (!_uiState.value.isModelLoaded || _uiState.value.isProcessing) return
-        
-        stopRecitation() // Stop audio when starting a new recording
-
+        stopRecitation()
         viewModelScope.launch {
             recordingJob?.cancel()
             recordingJob?.join()
             continuousProcessingJob?.cancel()
-            
             delay(200)
             audioBuffer.clear()
             _uiState.update { 
@@ -268,29 +349,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isNoMatch = false,
                     matchedSurahName = null,
                     currentAmplitude = List(30) { 0f },
-                    verseCorrection = emptyList()
+                    verseCorrection = emptyList(),
+                    currentTafsir = null
                 ) 
             }
-            
             recordingJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     recorderHelper.recordAudio().collect { chunk -> 
                         audioBuffer.add(chunk)
-                        
-                        // Maintain rolling buffer for sliding window
                         var currentSize = audioBuffer.sumOf { it.size }
                         while (currentSize > SLIDING_WINDOW_SIZE && audioBuffer.isNotEmpty()) {
                             val removed = audioBuffer.removeAt(0)
                             currentSize -= removed.size
                         }
-                        
                         updateAmplitude(chunk)
                     }
                 } catch (e: Exception) {
                     _uiState.update { it.copy(isRecording = false, errorMessage = "Recording failed") }
                 }
             }
-
             if (_uiState.value.isContinuousModeEnabled) {
                 startContinuousProcessing()
             }
@@ -300,9 +377,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startContinuousProcessing() {
         continuousProcessingJob = viewModelScope.launch(Dispatchers.Default) {
             while (true) {
-                delay(2500) // Process every 2.5 seconds
+                delay(2500)
                 if (!_uiState.value.isRecording) break
-                
                 val windowData = audioBuffer.toList()
                 if (windowData.isNotEmpty()) {
                     processAudioChunk(windowData)
@@ -320,12 +396,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 System.arraycopy(chunk, 0, fullAudio, offset, chunk.size)
                 offset += chunk.size
             }
-
             val (features, timeFrames) = AudioProcessor.computeMelSpectrogram(fullAudio)
             if (timeFrames > 0) {
                 val resultTranscript = inferenceEngine?.runInference(features, timeFrames, vocab!!) ?: ""
-                
-                // Confidence Gating: Strict threshold 0.85 for Auto-mode
                 val match = QuranMatcher.matchVerse(
                     transcript = resultTranscript, 
                     quran = quran!!,
@@ -333,9 +406,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     currentSurah = _uiState.value.matchedSurahId,
                     currentAyah = _uiState.value.matchedAyahNumber
                 )
-                
                 if (match != null) {
-                    // Debouncing: Only update if it's a NEW verse
                     if (match.surah != _uiState.value.matchedSurahId || match.ayah != _uiState.value.matchedAyahNumber) {
                         val correction = computeCorrection(match.textUthmani, resultTranscript)
                         _uiState.update { state ->
@@ -349,7 +420,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 translationBn = match.translationBn,
                                 transcript = resultTranscript,
                                 isNoMatch = false,
-                                verseCorrection = correction
+                                verseCorrection = correction,
+                                currentTafsir = null // Clear tafsir for new verse
                             )
                         }
                     }
@@ -365,34 +437,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val verseWords = verse.split("\\s+".toRegex()).filter { it.isNotBlank() }
             val normalizedTranscript = ArabicNormalizer.normalize(transcript)
             val transcriptWords = normalizedTranscript.split("\\s+".toRegex()).filter { it.isNotBlank() }
-            
             var lastFoundIndex = -1
             verseWords.map { word ->
                 val normWord = ArabicNormalizer.normalize(word)
-                
-                // Find this word in the transcript after the last found word
                 var foundAt = -1
                 for (i in (lastFoundIndex + 1) until transcriptWords.size) {
-                    // Fuzzy match: check if transcript word contains or is contained by verse word
-                    if (transcriptWords[i] == normWord || 
-                        transcriptWords[i].contains(normWord) || 
-                        normWord.contains(transcriptWords[i])) {
+                    if (transcriptWords[i] == normWord || transcriptWords[i].contains(normWord) || normWord.contains(transcriptWords[i])) {
                         foundAt = i
                         break
                     }
                 }
-                
                 if (foundAt != -1) {
                     lastFoundIndex = foundAt
                     WordCorrection(word, WordState.CORRECT)
                 } else {
-                    // Check if it exists elsewhere in the transcript (WRONG sequence or missed)
                     val existsElsewhere = transcriptWords.any { it == normWord }
-                    if (existsElsewhere) {
-                        WordCorrection(word, WordState.WRONG)
-                    } else {
-                        WordCorrection(word, WordState.MISSING)
-                    }
+                    if (existsElsewhere) WordCorrection(word, WordState.WRONG) else WordCorrection(word, WordState.MISSING)
                 }
             }
         } catch (e: Exception) {
@@ -408,7 +468,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val rms = if (chunk.isNotEmpty()) sqrt(sum / chunk.size) else 0f
         val normalized = (rms * 5f).coerceIn(0f, 1f)
-        
         _uiState.update { state ->
             val newAmplitudes = state.currentAmplitude.toMutableList().apply {
                 removeAt(0)
@@ -425,12 +484,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 recordingJob?.cancel()
                 recordingJob?.join()
                 continuousProcessingJob?.cancel()
-
                 if (_uiState.value.isContinuousModeEnabled) {
                     _uiState.update { it.copy(isProcessing = false) }
                     return@launch
                 }
-
                 val totalSize = audioBuffer.sumOf { it.size }
                 if (totalSize == 0) {
                     _uiState.update { it.copy(isProcessing = false, errorMessage = "No audio captured") }
@@ -464,7 +521,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             translationBn = match.translationBn,
                             transcript = resultTranscript,
                             currentAmplitude = List(30) { 0f },
-                            verseCorrection = correction
+                            verseCorrection = correction,
+                            currentTafsir = null
                         )
                     } else {
                         state.copy(
@@ -473,7 +531,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             transcript = resultTranscript,
                             errorMessage = if (resultTranscript.isBlank()) "No speech detected" else null,
                             currentAmplitude = List(30) { 0f },
-                            verseCorrection = emptyList()
+                            verseCorrection = emptyList(),
+                            currentTafsir = null
                         )
                     }
                 }

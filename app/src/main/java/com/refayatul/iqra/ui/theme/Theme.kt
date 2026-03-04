@@ -7,7 +7,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -38,14 +37,11 @@ fun IqraTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
-            
+            // We rely on enableEdgeToEdge() in MainActivity for transparent bars.
+            // We only need to control icon appearance here.
             val insetsController = WindowCompat.getInsetsController(window, view)
-            // Light status bar icons (darkTheme = false means black icons on light background)
-            // We want white icons on dark background (darkTheme = true) -> isAppearanceLightStatusBars = false
-            // We want dark icons on light background (darkTheme = false) -> isAppearanceLightStatusBars = true
             insetsController.isAppearanceLightStatusBars = !darkTheme
+            insetsController.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

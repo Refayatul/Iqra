@@ -161,7 +161,7 @@ fun HomeScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = ComposeColor.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.primary
                 ),
@@ -198,7 +198,9 @@ fun HomeScreen(
                                 ResultDisplay(uiState, 
                                     onCardClick = { id, ayah -> viewModel.navigateToSurah(id, ayah) },
                                     onPlayClick = { id, ayah -> viewModel.playRecitation(id, ayah) },
-                                    onStopClick = { viewModel.stopRecitation() }
+                                    onStopClick = { viewModel.stopRecitation() },
+                                    onFetchTafsir = { id, ayah -> viewModel.fetchTafsir(id, ayah) },
+                                    onTafsirSourceSelect = { viewModel.selectTafsirSource(it) }
                                 )
                             }
                         }
@@ -266,7 +268,14 @@ fun SearchScreen(viewModel: MainViewModel, uiState: IqraUiState) {
                             focusedIndicatorColor = ComposeColor.Transparent,
                             unfocusedIndicatorColor = ComposeColor.Transparent
                         ),
-                        singleLine = true
+                        singleLine = true,
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                }
+                            }
+                        }
                     )
                 },
                 navigationIcon = {
@@ -282,7 +291,7 @@ fun SearchScreen(viewModel: MainViewModel, uiState: IqraUiState) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (uiState.searchQuery.isEmpty()) {
+            if (uiState.searchQuery.length < 3) {
                 item {
                     Text(
                         "Surah Index",
@@ -302,20 +311,28 @@ fun SearchScreen(viewModel: MainViewModel, uiState: IqraUiState) {
                     )
                 }
             } else {
-                items(uiState.searchResults) { ayah ->
-                    ListItem(
-                        headlineContent = { 
-                            Text(
-                                ayah.text_uthmani, 
-                                fontFamily = QuranFont, 
-                                fontSize = 24.sp, 
-                                textAlign = TextAlign.End,
-                                modifier = Modifier.fillMaxWidth()
-                            ) 
-                        },
-                        supportingContent = { Text("${ayah.surah_name_en} : ${ayah.ayah}\n${ayah.translationEn}") },
-                        modifier = Modifier.clickable { viewModel.navigateToSurah(ayah.surah, ayah.ayah) }
-                    )
+                if (uiState.searchResults.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No verses found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else {
+                    items(uiState.searchResults) { ayah ->
+                        ListItem(
+                            headlineContent = { 
+                                Text(
+                                    ayah.text_uthmani, 
+                                    fontFamily = QuranFont, 
+                                    fontSize = 24.sp, 
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) 
+                            },
+                            supportingContent = { Text("${ayah.surah_name_en} : ${ayah.ayah}\n${ayah.translationEn}") },
+                            modifier = Modifier.clickable { viewModel.navigateToSurah(ayah.surah, ayah.ayah) }
+                        )
+                    }
                 }
             }
         }
@@ -568,7 +585,9 @@ fun ResultDisplay(
     uiState: IqraUiState, 
     onCardClick: (Int, Int) -> Unit,
     onPlayClick: (Int, Int) -> Unit,
-    onStopClick: () -> Unit
+    onStopClick: () -> Unit,
+    onFetchTafsir: (Int, Int) -> Unit,
+    onTafsirSourceSelect: (TafsirSource) -> Unit
 ) {
     val context = LocalContext.current
     if (uiState.matchedSurahName != null) {
@@ -598,7 +617,8 @@ fun ResultDisplay(
             Column(
                 modifier = Modifier
                     .padding(24.dp)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -717,6 +737,17 @@ fun ResultDisplay(
                         .padding(horizontal = 16.dp)
                 )
                 
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Tafsir Section
+                if (uiState.isOnline) {
+                    TafsirSection(
+                        uiState = uiState,
+                        onFetchTafsir = { onFetchTafsir(uiState.matchedSurahId!!, uiState.matchedAyahNumber!!) },
+                        onSourceSelect = onTafsirSourceSelect
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Text(
@@ -743,6 +774,97 @@ fun ResultDisplay(
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TafsirSection(
+    uiState: IqraUiState,
+    onFetchTafsir: () -> Unit,
+    onSourceSelect: (TafsirSource) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { 
+                    expanded = !expanded
+                    if (expanded && uiState.currentTafsir == null) onFetchTafsir()
+                }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Tafsir (${uiState.selectedTafsirSource.displayName})",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.Settings, contentDescription = "Change Source", tint = MaterialTheme.colorScheme.primary)
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false }
+        ) {
+            TafsirSource.entries.groupBy { it.language }.forEach { (lang, sources) ->
+                Text(
+                    text = lang,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                sources.forEach { source ->
+                    DropdownMenuItem(
+                        text = { Text(source.displayName) },
+                        onClick = {
+                            onSourceSelect(source)
+                            menuExpanded = false
+                            if (!expanded) expanded = true
+                        }
+                    )
+                }
+                HorizontalDivider()
+            }
+        }
+
+        AnimatedVisibility(visible = expanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            ) {
+                if (uiState.isTafsirLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center).size(24.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = uiState.currentTafsir ?: "Tap to load Tafsir",
+                        style = TextStyle(
+                            fontSize = 16.sp,
+                            lineHeight = 1.5.em,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

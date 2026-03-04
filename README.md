@@ -1,4 +1,4 @@
-# Iqra (اقرأ) - Premium Offline Quran Recognition & Learning
+# Iqra (اقরأ) - Premium Offline Quran Recognition & Learning
 
 **Iqra** is a state-of-the-art native Android application designed for high-accuracy, 100% offline Quranic voice recognition. It combines on-device AI with a premium manuscript-inspired design to create a powerful tool for recitation improvement, memorization, and discovery.
 
@@ -8,7 +8,8 @@
 - **Continuous Recitation (Auto-Mode)**: Hands-free experience with a 7-second sliding window buffer that identifies verses in real-time as you recite.
 - **Correction Mode**: Visual feedback on your recitation. Correct words are highlighted in theme colors, while missed or incorrect words are marked in red with underlines.
 - **Identify & Play**: Listen to professional recitation by Mishary Rashid Alafasy for any identified verse to verify your Tajweed (requires internet).
-- **Smart Topic Search**: Quickly find verses by keywords in English or Bangla. Search results are debounced and filtered on background threads for zero lag.
+- **Deep Study with Tafsir**: Access 22+ high-quality Tafsir sources in **Bengali, English, and Arabic** (requires internet). Includes classical works like Ibn Kathir, Al-Jalalayn, and modern interpretations.
+- **Smart Topic Search**: Quickly find verses by keywords in English or Bangla. Features 300ms debouncing and background filtering for zero lag.
 - **Premium Quranic Typography**: Features the professional **KFGQPC Uthman Taha** font with optimized 1.6em line spacing for clear diacritics.
 - **Share as Image**: Generate and share high-resolution verse cards with Arabic text, translations, and "Iqra" branding.
 - **Dual Premium Themes**:
@@ -17,7 +18,7 @@
 
 ## 🏗 Architecture & Tech Stack
 
-- **UI**: Jetpack Compose (Material 3) with FlowRow for word-by-word alignment.
+- **UI**: Jetpack Compose (Material 3) with `FlowRow` for word-by-word alignment and `AnimatedContent` for screen transitions.
 - **AI Inference**: [ONNX Runtime Mobile](https://onnxruntime.ai/).
 - **Audio Engine**: Native `AudioRecord` at 16kHz mono with real-time RMS visualizer.
 - **Media**: Media3 ExoPlayer for high-quality audio streaming.
@@ -33,3 +34,6 @@ Ensure these files are in `app/src/main/assets/data/`:
 - `fastconformer_ar_ctc_q8.onnx`: Root of `assets/`.
 - `quran_font.ttf`: Professional font in `app/src/main/res/font/`.
 
+## 📜 License
+
+This project is licensed under the MIT License.
