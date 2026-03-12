@@ -74,8 +74,8 @@ data class IqraUiState(
     val transcript: String? = null,
     val errorMessage: String? = null,
     val isNoMatch: Boolean = false,
-    val isDarkMode: Boolean = true,
-    val isContinuousModeEnabled: Boolean = false,
+    val isDarkMode: Boolean = false, // Default to Light Mode
+    val isBanglaEnabled: Boolean = true,
     val searchQuery: String = "",
     val searchResults: List<Ayah> = emptyList(),
     val surahIndex: List<SurahInfo> = emptyList(),
@@ -116,10 +116,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var quran: List<Ayah>? = null
     
     private var recordingJob: Job? = null
-    private var continuousProcessingJob: Job? = null
     private var searchJob: Job? = null
     
-    private val SLIDING_WINDOW_SIZE = 16000 * 7
     private val audioBuffer = mutableListOf<FloatArray>()
 
     private var exoPlayer: ExoPlayer? = null
@@ -253,8 +251,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(isDarkMode = !it.isDarkMode) }
     }
 
-    fun toggleContinuousMode() {
-        _uiState.update { it.copy(isContinuousModeEnabled = !it.isContinuousModeEnabled) }
+    fun toggleBangla() {
+        _uiState.update { it.copy(isBanglaEnabled = !it.isBanglaEnabled) }
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -272,9 +270,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch(Dispatchers.Default) {
+            val isBangla = _uiState.value.isBanglaEnabled
             val results = quran?.filter { ayah ->
                 ayah.translationEn.contains(query, ignoreCase = true) ||
-                ayah.translationBn.contains(query, ignoreCase = true) ||
+                (isBangla && ayah.translationBn.contains(query, ignoreCase = true)) ||
                 ayah.surah_name_en.contains(query, ignoreCase = true)
             } ?: emptyList()
             _uiState.update { it.copy(searchResults = results.take(50)) }
@@ -339,7 +338,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             recordingJob?.cancel()
             recordingJob?.join()
-            continuousProcessingJob?.cancel()
             delay(200)
             audioBuffer.clear()
             _uiState.update { 
@@ -357,78 +355,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     recorderHelper.recordAudio().collect { chunk -> 
                         audioBuffer.add(chunk)
-                        var currentSize = audioBuffer.sumOf { it.size }
-                        while (currentSize > SLIDING_WINDOW_SIZE && audioBuffer.isNotEmpty()) {
-                            val removed = audioBuffer.removeAt(0)
-                            currentSize -= removed.size
-                        }
                         updateAmplitude(chunk)
                     }
                 } catch (e: Exception) {
                     _uiState.update { it.copy(isRecording = false, errorMessage = "Recording failed") }
                 }
             }
-            if (_uiState.value.isContinuousModeEnabled) {
-                startContinuousProcessing()
-            }
-        }
-    }
-
-    private fun startContinuousProcessing() {
-        continuousProcessingJob = viewModelScope.launch(Dispatchers.Default) {
-            while (true) {
-                delay(2500)
-                if (!_uiState.value.isRecording) break
-                val windowData = audioBuffer.toList()
-                if (windowData.isNotEmpty()) {
-                    processAudioChunk(windowData)
-                }
-            }
-        }
-    }
-
-    private suspend fun processAudioChunk(buffer: List<FloatArray>) {
-        try {
-            val totalSize = buffer.sumOf { it.size }
-            val fullAudio = FloatArray(totalSize)
-            var offset = 0
-            for (chunk in buffer) {
-                System.arraycopy(chunk, 0, fullAudio, offset, chunk.size)
-                offset += chunk.size
-            }
-            val (features, timeFrames) = AudioProcessor.computeMelSpectrogram(fullAudio)
-            if (timeFrames > 0) {
-                val resultTranscript = inferenceEngine?.runInference(features, timeFrames, vocab!!) ?: ""
-                val match = QuranMatcher.matchVerse(
-                    transcript = resultTranscript, 
-                    quran = quran!!,
-                    threshold = 0.85, 
-                    currentSurah = _uiState.value.matchedSurahId,
-                    currentAyah = _uiState.value.matchedAyahNumber
-                )
-                if (match != null) {
-                    if (match.surah != _uiState.value.matchedSurahId || match.ayah != _uiState.value.matchedAyahNumber) {
-                        val correction = computeCorrection(match.textUthmani, resultTranscript)
-                        _uiState.update { state ->
-                            state.copy(
-                                matchedSurahId = match.surah,
-                                matchedSurahName = match.surahName,
-                                matchedSurahNameEn = match.surahNameEn,
-                                matchedAyahNumber = match.ayah,
-                                arabicText = match.textUthmani,
-                                translationEn = match.translationEn,
-                                translationBn = match.translationBn,
-                                transcript = resultTranscript,
-                                isNoMatch = false,
-                                verseCorrection = correction,
-                                currentTafsir = null // Clear tafsir for new verse
-                            )
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Continuous processing error", e)
         }
     }
 
@@ -478,16 +410,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun stopRecording() {
-        _uiState.update { it.copy(isRecording = false, isProcessing = !_uiState.value.isContinuousModeEnabled) }
+        _uiState.update { it.copy(isRecording = false, isProcessing = true) }
         viewModelScope.launch(Dispatchers.Default) {
             try {
                 recordingJob?.cancel()
                 recordingJob?.join()
-                continuousProcessingJob?.cancel()
-                if (_uiState.value.isContinuousModeEnabled) {
-                    _uiState.update { it.copy(isProcessing = false) }
-                    return@launch
-                }
+
                 val totalSize = audioBuffer.sumOf { it.size }
                 if (totalSize == 0) {
                     _uiState.update { it.copy(isProcessing = false, errorMessage = "No audio captured") }

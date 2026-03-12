@@ -153,12 +153,44 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleDarkMode() }) {
-                        Icon(
-                            imageVector = if (uiState.isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            contentDescription = "Toggle Theme",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    var menuExpanded by remember { mutableStateOf(false) }
+                    
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(if (uiState.isDarkMode) "Light Mode" else "Dark Mode") },
+                                leadingIcon = { 
+                                    Icon(
+                                        imageVector = if (uiState.isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = { 
+                                    viewModel.toggleDarkMode()
+                                    menuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (uiState.isBanglaEnabled) "Disable Bangla" else "Enable Bangla") },
+                                leadingIcon = { 
+                                    Icon(
+                                        imageVector = if (uiState.isBanglaEnabled) Icons.Default.Language else Icons.Default.Translate,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = { 
+                                    viewModel.toggleBangla()
+                                    menuExpanded = false
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -217,22 +249,6 @@ fun HomeScreen(
                     .windowInsetsPadding(WindowInsets.navigationBars)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    ) {
-                        Text(
-                            "Auto Mode",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Switch(
-                            checked = uiState.isContinuousModeEnabled,
-                            onCheckedChange = { viewModel.toggleContinuousMode() },
-                            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
-                        )
-                    }
                     ListeningLabel(uiState.isRecording)
                     AudioWaveformVisualizer(uiState.currentAmplitude, uiState.isRecording)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -722,20 +738,22 @@ fun ResultDisplay(
                         .padding(horizontal = 16.dp)
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                if (uiState.isBanglaEnabled) {
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = uiState.translationBn ?: "",
-                    style = TextStyle(
-                        fontSize = 18.sp,
-                        lineHeight = 24.sp,
-                        textAlign = TextAlign.Start,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                )
+                    Text(
+                        text = uiState.translationBn ?: "",
+                        style = TextStyle(
+                            fontSize = 18.sp,
+                            lineHeight = 24.sp,
+                            textAlign = TextAlign.Start,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    )
+                }
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
@@ -767,7 +785,7 @@ fun ResultDisplay(
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
-                if (uiState.isModelLoaded) {
+                if (uiState.isModelLoaded && uiState.isBanglaEnabled) {
                     Text(
                         text = "একটি আয়াত তিলাওয়াত শুরু করুন",
                         style = MaterialTheme.typography.bodyMedium,
