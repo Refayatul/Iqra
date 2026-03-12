@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+# Ignore Android build files and APKs
+*.apk
+*.ap_
+*.aab
+*.dm
