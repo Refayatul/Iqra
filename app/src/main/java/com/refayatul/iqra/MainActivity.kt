@@ -18,6 +18,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -120,6 +122,7 @@ fun IqraApp(
                     surahId = screen.surahId,
                     initialAyahId = screen.ayahId,
                     ayahs = uiState.fullSurahAyahs,
+                    isBanglaEnabled = uiState.isBanglaEnabled,
                     onBack = { viewModel.navigateBack() }
                 )
             }
@@ -140,11 +143,11 @@ fun HomeScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        "Iqra",
+                        text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Light,
-                        letterSpacing = 4.sp
+                        letterSpacing = 2.sp
                     )
                 },
                 navigationIcon = {
@@ -345,7 +348,10 @@ fun SearchScreen(viewModel: MainViewModel, uiState: IqraUiState) {
                                     modifier = Modifier.fillMaxWidth()
                                 ) 
                             },
-                            supportingContent = { Text("${ayah.surah_name_en} : ${ayah.ayah}\n${ayah.translationEn}") },
+                            supportingContent = { 
+                                val translation = if (uiState.isBanglaEnabled) "${ayah.translationEn}\n${ayah.translationBn}" else ayah.translationEn
+                                Text("${ayah.surah_name_en} : ${ayah.ayah}\n$translation") 
+                            },
                             modifier = Modifier.clickable { viewModel.navigateToSurah(ayah.surah, ayah.ayah) }
                         )
                     }
@@ -361,6 +367,7 @@ fun SurahDetailScreen(
     surahId: Int,
     initialAyahId: Int,
     ayahs: List<Ayah>,
+    isBanglaEnabled: Boolean,
     onBack: () -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -396,75 +403,106 @@ fun SurahDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             items(ayahs) { ayah ->
                 val isHighlighted = ayah.ayah == initialAyahId
                 
-                Card(
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isHighlighted) 
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) 
-                        else 
-                            MaterialTheme.colorScheme.surface
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = if (isHighlighted) 2.dp else 0.dp)
+                    color = if (isHighlighted) 
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.05f) 
+                    else 
+                        MaterialTheme.colorScheme.background,
+                    border = if (isHighlighted) 
+                        BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                    else null
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp, vertical = 24.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = ayah.ayah.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = ayah.ayah.toString(),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            
                             IconButton(onClick = { shareAyahAsImage(context, ayah) }) {
-                                Icon(Icons.Default.Share, contentDescription = "Share", modifier = Modifier.size(18.dp))
+                                Icon(
+                                    Icons.Default.Share, 
+                                    contentDescription = "Share", 
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                         
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                             Text(
                                 text = ayah.text_uthmani,
                                 style = TextStyle(
                                     fontFamily = QuranFont,
-                                    fontSize = 28.sp,
+                                    fontSize = 32.sp,
                                     lineHeight = 1.6.em,
-                                    textAlign = TextAlign.Start,
+                                    textAlign = TextAlign.Center,
                                     color = MaterialTheme.colorScheme.onSurface
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                         
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
                         
                         Text(
                             text = ayah.translationEn,
                             style = TextStyle(
-                                fontSize = 16.sp,
-                                lineHeight = 24.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                                fontSize = 18.sp,
+                                lineHeight = 28.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        if (isBanglaEnabled) {
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                        Text(
-                            text = ayah.translationBn,
-                            style = TextStyle(
-                                fontSize = 16.sp,
-                                lineHeight = 24.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Text(
+                                text = ayah.translationBn,
+                                style = TextStyle(
+                                    fontSize = 18.sp,
+                                    lineHeight = 28.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                ),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                             )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(32.dp))
+                        
+                        HorizontalDivider(
+                            modifier = Modifier.width(100.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
                         )
                     }
                 }
@@ -539,7 +577,7 @@ fun shareAyahAsImage(context: Context, ayah: Ayah) {
     paint.color = android.graphics.Color.WHITE
     paint.textSize = 60f
     paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.ITALIC)
-    canvas.drawText("Iqra", width / 2f, height - 150f, paint)
+    canvas.drawText("Quran Finder", width / 2f, height - 150f, paint)
 
     try {
         val cachePath = File(context.cacheDir, "images")
